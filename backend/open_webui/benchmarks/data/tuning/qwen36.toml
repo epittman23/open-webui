@@ -1,0 +1,52 @@
+# Search space for the qwen36 MoE profile (34.66 B total, ~3 B active, 20.81
+# GiB on disk against 6 GiB of VRAM).
+#
+# The knob that matters most here is LLAMA_MOE: it decides how many layers'
+# expert tensors stay in system RAM. Generation on this profile is bound by
+# system-RAM bandwidth for exactly those tensors, so this is the placement
+# trade the whole profile exists to make -- and the direction is not obvious,
+# because moving experts onto the card costs the VRAM that the KV cache and the
+# compute buffer also want.
+id = "qwen36"
+profile = "qwen36"
+
+# 32K is the floor. Below it this stops being the long-context configuration
+# the profile was built for, and a "faster" result would be a capability cut.
+min_ctx = 32768
+
+[knob.LLAMA_MOE]
+values = [28, 30, 32, 34, 36]
+
+# Flat from 4 to 14 on llama-bench (2026-08-17), which measured the model
+# rather than the server. Kept in the space because that sweep drove
+# llama-bench and this one drives llama-server, and the two have different
+# fixed costs per token.
+[knob.LLAMA_THREADS]
+values = [4, 6, 8, 10]
+
+[knob.LLAMA_BATCH]
+values = [256, 512, 1024, 2048]
+
+[knob.LLAMA_UBATCH]
+values = [128, 256, 512]
+
+# f16 is in the list even though it will not fit at 64K: the point of the
+# feasibility pre-screen is that an OOM prunes a region of the grid cheaply and
+# records why, which is more useful than a space that quietly assumes an
+# answer. q4_0 is the interesting one -- it buys VRAM that LLAMA_MOE can spend.
+[knob.LLAMA_CACHE_K]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+[knob.LLAMA_CACHE_V]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+[knob.LLAMA_CTX]
+values = [32768, 65536]
+
+[[constraint]]
+expr = "LLAMA_UBATCH <= LLAMA_BATCH"
+
+[[constraint]]
+expr = "LLAMA_CTX >= min_ctx"

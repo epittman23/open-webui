@@ -17,6 +17,7 @@
 	import UserStatusModal from './UserStatusModal.svelte';
 	import Emoji from '$lib/components/common/Emoji.svelte';
 	import CalendarIcon from './icons/Calendar.svelte';
+	import ChartBarIcon from '$lib/components/icons/ChartBar.svelte';
 	import ClockIcon from './icons/Clock.svelte';
 	import CodeIcon from './icons/Code.svelte';
 	import EmojiFaceIcon from './icons/EmojiFace.svelte';
@@ -448,6 +449,50 @@
 								on:click|preventDefault|stopPropagation={() => togglePin('playground')}
 							>
 								{#if isPinned('playground')}
+									<PinSlashIcon className="size-3.5" strokeWidth="1.5" />
+								{:else}
+									<PinIcon className="size-3.5" strokeWidth="1.5" />
+								{/if}
+							</button>
+						</Tooltip>
+					{/if}
+				</div>
+			{/if}
+
+			{#if role === 'admin'}
+				<div class="flex items-center w-full">
+					<a
+						href="/benchmarks"
+						draggable="false"
+						class="flex flex-1 h-[1.6875rem] items-center gap-2 rounded-xl px-2 text-[0.8125rem] hover:bg-gray-100 dark:hover:bg-gray-900 transition cursor-pointer select-none"
+						on:click={async (e) => {
+							if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+							e.preventDefault();
+							show = false;
+							goto('/benchmarks');
+							if ($mobile) {
+								await tick();
+								showSidebar.set(false);
+							}
+						}}
+					>
+						<div class="self-center">
+							<ChartBarIcon className="size-3.5" strokeWidth="1.5" />
+						</div>
+						<div class="self-center truncate">{$i18n.t('Benchmarks')}</div>
+					</a>
+					{#if shiftKey}
+						<Tooltip
+							content={isPinned('benchmarks')
+								? $i18n.t('Unpin from Sidebar')
+								: $i18n.t('Pin to Sidebar')}
+						>
+							<button
+								type="button"
+								class="p-1 mr-1 rounded-lg hover:bg-gray-100/60 dark:hover:bg-gray-700/60 transition"
+								on:click|preventDefault|stopPropagation={() => togglePin('benchmarks')}
+							>
+								{#if isPinned('benchmarks')}
 									<PinSlashIcon className="size-3.5" strokeWidth="1.5" />
 								{:else}
 									<PinIcon className="size-3.5" strokeWidth="1.5" />

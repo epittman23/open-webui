@@ -1,0 +1,25 @@
+# The tuning loop's suite: small enough to run between two serving
+# configurations in one sitting, fixed so every run tests the same items.
+#
+# 24 items is n=24. One item is ~4 percentage points, which is smaller than
+# nothing and larger than most of the differences worth chasing. Use this to
+# detect that a configuration BROKE something, not to rank two that both work.
+# It is not comparable to any published score; only the `full` tier is.
+
+id     = "smoke"
+description = "fast config A/B - the tuning loop; 24 items, not a leaderboard number"
+name   = "smoke"
+seed   = 20260830
+note   = "config A/B only; not comparable to published pass@1"
+
+[[benchmark]]
+id = "humaneval"
+n  = 8
+
+[[benchmark]]
+id = "mbpp"
+n  = 8
+
+[[benchmark]]
+id = "ds1000"
+n  = 8

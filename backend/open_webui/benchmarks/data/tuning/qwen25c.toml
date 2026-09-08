@@ -1,0 +1,51 @@
+# Search space for the qwen25c profile (Qwen2.5-Coder-7B, 4.36 GiB, dense).
+#
+# The only local model here that fits in 6 GiB outright, so unlike qwen36 there
+# is no placement question: -ngl 99 with nothing on the CPU is the baseline and
+# LLAMA_MOE is not a knob (llama-env.sh drops --n-cpu-moe for a dense profile,
+# and llama-tune refuses a candidate that sets it, since two candidates would
+# otherwise collapse onto one configuration and be measured as though they were
+# two).
+#
+# What is left is compute and KV shape, and both matter more here than they do
+# on qwen36 for the same reason: nothing is waiting on system RAM, so the
+# server's own fixed costs are a larger share of each token. This profile also
+# reloads in seconds rather than minutes, which makes it the one to run a real
+# sweep against first.
+id = "qwen25c"
+profile = "qwen25c"
+
+# The profile serves 16K rather than the model's 32K, because a q8_0 KV cache
+# costs ~29.7 KiB/token on this GGUF and the full window fits inside 6 GiB with
+# less margin than LLAMA_VRAM_HEADROOM_MIB warns at (2026-09-04). 16K is
+# therefore the floor, not a starting point to trade away.
+min_ctx = 16384
+
+[knob.LLAMA_THREADS]
+values = [4, 6, 8, 10]
+
+[knob.LLAMA_BATCH]
+values = [256, 512, 1024, 2048]
+
+[knob.LLAMA_UBATCH]
+values = [128, 256, 512, 1024]
+
+[knob.LLAMA_CACHE_K]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+[knob.LLAMA_CACHE_V]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+# 32768 is in the space because a fully resident 4.36 GiB model may have room
+# for it; whether it does is the kind of thing to measure rather than assume,
+# and an OOM here is a recorded result.
+[knob.LLAMA_CTX]
+values = [16384, 32768]
+
+[[constraint]]
+expr = "LLAMA_UBATCH <= LLAMA_BATCH"
+
+[[constraint]]
+expr = "LLAMA_CTX >= min_ctx"

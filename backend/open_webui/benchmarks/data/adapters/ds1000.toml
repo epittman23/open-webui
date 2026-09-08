@@ -1,0 +1,59 @@
+# DS-1000 - Lai et al. 2022, "DS-1000: A Natural and Reliable Benchmark for
+# Data Science Code Generation" - https://arxiv.org/abs/2211.11501
+#
+# 1000 problems collected from StackOverflow and deliberately perturbed away
+# from their originals to defeat memorization, which makes this the least
+# contaminated of the three and the one carrying most of the discriminating
+# power between serving configurations.
+#
+# Grading is the benchmark's own: each item's `code_context` defines
+# test_execution(solution), which splices the model's code into its private
+# exec_context and asserts against a generated expected result. This file never
+# states an answer.
+
+id       = "ds1000"
+name     = "DS-1000"
+license  = "CC-BY-SA-4.0"
+homepage = "https://github.com/xlang-ai/DS-1000"
+citation = "Lai et al. 2022, arXiv:2211.11501"
+
+# The problem text is already a complete completion-style prompt ending in
+# "BEGIN SOLUTION\n<code>\n". Only the minimum is added to make a chat model
+# answer with code rather than prose; the problem itself is untouched.
+#
+# The template must not name the output variable. It used to say "Assign the
+# answer to `result` as the problem asks", which was false for 194 of the 511
+# in-filter items: DS-1000 items name their own variable in the problem text
+# ("b = ... # put solution in this variable"), and the reference solutions
+# assign `result` in 317 of them, `df` in 103, `a` in 13, and so on. A model
+# that obeyed this file instead of the problem was then graded NameError on a
+# numerically correct answer -- confirmed on items 295 and 297. Calibration
+# cannot catch this class of bug, because it runs the reference solutions,
+# which use the right names.
+prompt_template = """{prompt}
+
+Reply with only the code that goes in the solution block above. Assign the answer to the variable the problem names for it. Do not restate the setup code.
+"""
+
+[fetch]
+kind    = "hf_rows"
+dataset = "xlangai/DS-1000"
+config  = "default"
+split   = "test"
+
+[item]
+id_field     = "metadata.problem_id"
+prompt_field = "prompt"
+
+# Default slice: the libraries the base requirements.txt can actually import.
+# Anything outside it is recorded as skipped, never failed, so installing
+# requirements-extra.txt widens coverage without changing any recorded result.
+[filter]
+field  = "metadata.library"
+values = ["Pandas", "Numpy"]
+
+[check]
+harness = "ds1000"    # exec code_context, then call test_execution(solution)
+timeout = 60
+# pandas/numpy live in site-packages, so this harness cannot run with -S.
+isolated = false

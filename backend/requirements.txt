@@ -92,6 +92,24 @@ psutil==7.2.2
 sentencepiece==0.2.1
 soundfile==0.13.1
 
+## ----------------------------------------------------------------
+## benchmarks/report.py (ported from local-llm's scripts/llama_report.py):
+## scipy is a hard dependency for its exact tests (binomtest, chi2, norm,
+## kruskal, f_oneway, mannwhitneyu) -- see report.py's module docstring for
+## why an unavailable scipy raises SciPyUnavailable instead of failing
+## import. matplotlib is soft (report_figures.py degrades to unicode text
+## plots without it) but pinned here anyway so a normal install gets the
+## real figures.
+scipy==1.18.1
+matplotlib==3.11.1
+
+## DS-1000 grading only (benchmarks/grading/ds1000.py, run through
+## grader_python() -- this same venv by default): some items' reference
+## solutions round-trip through YAML, and without it those items are
+## recorded as skipped rather than failed. pandas is already a direct
+## dependency above (for other reasons); numpy comes in transitively with it.
+pyyaml==6.0.3
+
 pillow==12.2.0
 opencv-python-headless==4.13.0.92
 rapidocr==3.9.2

@@ -1,0 +1,5 @@
+Use a formal, professional tone.
+
+Write code in a single fenced block, complete and runnable as given, with the language named on the fence.
+
+Never use em-dashes. Use standard punctuation such as colons, semicolons, and commas.

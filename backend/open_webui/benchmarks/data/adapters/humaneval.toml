@@ -1,0 +1,40 @@
+# HumanEval - Chen et al. 2021, "Evaluating Large Language Models Trained on Code"
+# https://arxiv.org/abs/2107.03374
+#
+# 164 hand-written Python problems. Every item ships its own grader: a `test`
+# field defining check(candidate), plus the `entry_point` to hand it. Nothing in
+# this file states an answer; the dataset does.
+
+id       = "humaneval"
+name     = "HumanEval"
+license  = "MIT"
+homepage = "https://github.com/openai/human-eval"
+citation = "Chen et al. 2021, arXiv:2107.03374"
+
+# The wrapper that turns a completion-style stub into a chat turn. This is the
+# text that was used for the prompts/humaneval0-4.txt measurements already in
+# README.md, kept so those runs stay interpretable -- but note that the stub it
+# wraps is now the dataset's own, which carries the blank lines the hand-typed
+# files had collapsed. See the 2026-08-30 decisions-log entry.
+prompt_template = """Complete the following Python function:
+```python
+{prompt}```
+"""
+
+[fetch]
+kind   = "github_raw"
+repo   = "openai/human-eval"
+ref    = "master"
+path   = "data/HumanEval.jsonl.gz"
+format = "jsonl.gz"
+
+[item]
+id_field     = "task_id"
+prompt_field = "prompt"
+
+[check]
+harness = "humaneval"     # code + item.test + check(item.entry_point)
+timeout = 20
+# HumanEval solutions import only from the standard library, so the grader can
+# run with site-packages disabled.
+isolated = true

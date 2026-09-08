@@ -1,0 +1,51 @@
+# Search space for the qwen38 dense profile (Qwen3.8-27B Q3_K_XL, -ngl 20 with
+# an -ot pin, MTP speculative decoding off the model's own head).
+#
+# This is the profile where -ngl is a real search: it is partially offloaded,
+# so the layer count sits somewhere just below a spill cliff, and the value in
+# llama-env.sh has been a placeholder since 2026-08-23. LLAMA_NGL is therefore
+# the knob this grid exists for, and the values bracket the current 20 in both
+# directions rather than starting at it.
+id = "qwen38"
+profile = "qwen38"
+
+min_ctx = 16384
+
+[knob.LLAMA_NGL]
+values = [16, 18, 20, 22, 24]
+
+[knob.LLAMA_THREADS]
+values = [8, 10, 12, 14]
+
+[knob.LLAMA_BATCH]
+values = [256, 512, 1024]
+
+[knob.LLAMA_UBATCH]
+values = [128, 256, 512]
+
+[knob.LLAMA_CACHE_K]
+values = ["q4_0", "q8_0"]
+ordered = false
+
+[knob.LLAMA_CACHE_V]
+values = ["q4_0", "q8_0"]
+ordered = false
+
+# Draft depth, not on/off. "off" is in the list because the 2026-08-23 entry
+# records that this profile still has no valid non-speculative baseline: the
+# only comparison ever made differed in three flags at once. A sweep that
+# includes it produces one as a side effect, paired against the same items.
+#
+# --parallel is deliberately not settable inside this string; llama-tune
+# refuses a candidate that puts it here, because llama-serve passes --parallel
+# unconditionally and it would be sent twice and recorded wrong. That is the
+# 2026-08-23 defect, and it cost a measurement.
+[knob.LLAMA_SPEC]
+values = ["off",
+          "--spec-type draft-mtp --spec-draft-n-max 2",
+          "--spec-type draft-mtp --spec-draft-n-max 3",
+          "--spec-type draft-mtp --spec-draft-n-max 4"]
+ordered = false
+
+[[constraint]]
+expr = "LLAMA_UBATCH <= LLAMA_BATCH"

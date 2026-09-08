@@ -79,6 +79,7 @@
 	import PinnedModelList from './Sidebar/PinnedModelList.svelte';
 	import PinnedNoteList from './Sidebar/PinnedNoteList.svelte';
 	import CalendarIcon from './Sidebar/icons/Calendar.svelte';
+	import ChartBarIcon from '../icons/ChartBar.svelte';
 	import ClockIcon from './Sidebar/icons/Clock.svelte';
 	import CodeIcon from './Sidebar/icons/Code.svelte';
 	import EditPencilIcon from './Sidebar/icons/EditPencil.svelte';
@@ -182,6 +183,8 @@
 				);
 			case 'playground':
 				return $user?.role === 'admin';
+			case 'benchmarks':
+				return $user?.role === 'admin';
 			default:
 				return false;
 		}
@@ -193,7 +196,8 @@
 			workspace: { label: 'Workspace', href: '/workspace', iconType: 'workspace' },
 			automations: { label: 'Automations', href: '/automations', iconType: 'automations' },
 			calendar: { label: 'Calendar', href: '/calendar', iconType: 'calendar' },
-			playground: { label: 'Playground', href: '/playground', iconType: 'playground' }
+			playground: { label: 'Playground', href: '/playground', iconType: 'playground' },
+			benchmarks: { label: 'Benchmarks', href: '/benchmarks', iconType: 'benchmarks' }
 		};
 		return items[id];
 	};
@@ -203,7 +207,8 @@
 		workspace: '/workspace',
 		calendar: '/calendar',
 		automations: '/automations',
-		playground: '/playground'
+		playground: '/playground',
+		benchmarks: '/benchmarks'
 	};
 
 	const getActiveMenuItemId = (pathname) => {
@@ -1060,6 +1065,8 @@
 												<CalendarIcon className="size-4" strokeWidth="1.5" />
 											{:else if itemId === 'playground'}
 												<CodeIcon className="size-4" strokeWidth="1.5" />
+											{:else if itemId === 'benchmarks'}
+												<ChartBarIcon className="size-4" strokeWidth="1.5" />
 											{/if}
 										</div>
 									</a>
@@ -1282,6 +1289,8 @@
 													<CalendarIcon className="size-4" strokeWidth="1.5" />
 												{:else if itemId === 'playground'}
 													<CodeIcon className="size-4" strokeWidth="1.5" />
+												{:else if itemId === 'benchmarks'}
+													<ChartBarIcon className="size-4" strokeWidth="1.5" />
 												{/if}
 											</div>
 
