@@ -26,7 +26,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from open_webui.benchmarks import tune
-from open_webui.benchmarks.tune_schedule import TuneRefused
+from open_webui.benchmarks.tune_schedule import GRID_DIR, TuneRefused
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.auth import get_admin_user
 
@@ -103,9 +103,16 @@ async def stop_tune(user=Depends(get_admin_user)):
 @router.get('/status')
 async def get_status(sweep_id: str | None = Query(None), user=Depends(get_admin_user)):
     try:
-        return await tune.sweep_status(sweep_id)
+        result = await tune.sweep_status(sweep_id)
     except TuneRefused as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    result['running'] = _running()
+    return result
+
+
+@router.get('/grids')
+async def get_grids(user=Depends(get_admin_user)):
+    return {'grids': sorted(p.stem for p in GRID_DIR.glob('*.toml'))}
 
 
 @router.get('/recent')

@@ -532,15 +532,23 @@ def caveats(groups: list[Group], blocks: dict[str, list[str]]) -> list[str]:
             )
 
     # The multi-flag warning, per tier: a comparison is only a comparison
-    # when one thing changed.
+    # when one thing changed. Groups are keyed by (model, config_id, tier,
+    # system_sha, adapter_sha), so several groups can share a config_id
+    # within one tier -- dedup by config-id pair so a differing flag set
+    # is reported once per tier, not once per group pairing.
     for tier in sorted(tiers):
         peers = [g for g in groups if g.tier == tier and g.rate()[1] > 0]
+        warned_pairs: set[frozenset[str]] = set()
         for i, a in enumerate(peers):
             for b in peers[i + 1 :]:
                 if a.config_id == b.config_id:
                     continue
+                pair_key = frozenset({a.config_id, b.config_id})
+                if pair_key in warned_pairs:
+                    continue
                 diff = differing(flags_of(blocks.get(a.config_id, [])), flags_of(blocks.get(b.config_id, [])))
                 if len(diff) > 1:
+                    warned_pairs.add(pair_key)
                     out.append(
                         f'> warning: `{a.config_id}` and `{b.config_id}` differ '
                         f'in {len(diff)} flags ({", ".join(diff)}). A difference '

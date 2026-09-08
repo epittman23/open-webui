@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { getContext, onDestroy } from 'svelte';
+	import { getContext, onDestroy, onMount } from 'svelte';
 	import { marked } from 'marked';
 
-	import { generateReport, getReportFileText } from '$lib/apis/benchmarks';
+	import { generateReport, getReportFileText, getTestOptions } from '$lib/apis/benchmarks';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import NativeSelect from '$lib/components/common/NativeSelect.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -21,6 +22,23 @@
 	let model = '';
 	let benchmark = '';
 	let figures = true;
+
+	let tierOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+	let benchmarkOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+
+	const loadOptions = async () => {
+		try {
+			const res = await getTestOptions(localStorage.token);
+			tierOptions = [{ value: '', label: $i18n.t('Default') }, ...(res?.tiers ?? [])];
+			benchmarkOptions = [{ value: '', label: $i18n.t('Default') }, ...(res?.benchmarks ?? [])];
+		} catch (err) {
+			console.error('Failed to load report field options:', err);
+		}
+	};
 
 	// -----------------------------------------------------------------------------
 	// Generation state
@@ -132,6 +150,10 @@
 		}
 	};
 
+	onMount(() => {
+		loadOptions();
+	});
+
 	onDestroy(() => {
 		revokeFigureUrls();
 	});
@@ -153,12 +175,10 @@
 			<label for="report-tier" class="text-xs text-gray-500 dark:text-gray-400"
 				>{$i18n.t('Tier')}</label
 			>
-			<input
-				id="report-tier"
-				type="text"
+			<NativeSelect
 				bind:value={tier}
-				placeholder={$i18n.t('e.g. smoke, standard, full')}
-				class="text-sm px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-850 outline-none w-40"
+				options={tierOptions}
+				className="text-sm px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-850 outline-none w-40"
 			/>
 		</div>
 
@@ -179,12 +199,10 @@
 			<label for="report-benchmark" class="text-xs text-gray-500 dark:text-gray-400"
 				>{$i18n.t('Benchmark')}</label
 			>
-			<input
-				id="report-benchmark"
-				type="text"
+			<NativeSelect
 				bind:value={benchmark}
-				placeholder={$i18n.t('Optional benchmark filter')}
-				class="text-sm px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-850 outline-none w-48"
+				options={benchmarkOptions}
+				className="text-sm px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-850 outline-none w-48"
 			/>
 		</div>
 

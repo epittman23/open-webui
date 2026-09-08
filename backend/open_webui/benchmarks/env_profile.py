@@ -39,7 +39,14 @@ def _env_sh() -> Path:
 
 
 async def profile_names() -> list[str]:
-    """The defined profile names, via `main.sh profile-names` (one per line)."""
+    """The defined profile names, via `main.sh profile-names` (one per line).
+
+    An unset LLAMA_ENV_SH resolves to an empty list, the same "unrecorded"
+    posture profile() below takes -- a misconfigured/not-yet-wired-up
+    deployment should show an empty picker, not a 500 with no readable
+    message (Starlette's default error body for an unhandled exception is
+    plain text, which breaks every API client's `res.json()` parse).
+    """
     try:
         proc = await asyncio.create_subprocess_exec(
             str(_env_sh()), 'profile-names', stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -52,7 +59,7 @@ async def profile_names() -> list[str]:
             return []
         if proc.returncode == 0:
             return [line.strip() for line in stdout.decode().splitlines() if line.strip()]
-    except OSError:
+    except (OSError, RuntimeError):
         pass
     return []
 

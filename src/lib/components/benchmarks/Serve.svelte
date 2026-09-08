@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, getContext } from 'svelte';
+	import { onMount, onDestroy, getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
 	import {
@@ -95,7 +95,21 @@
 	let stopping = false;
 	let checking = false;
 	let error: string | null = null;
-	let checkResult: { port?: number; model?: string; profile?: string } | null = null;
+	let checkResult: { port?: number; model?: string; profile?: string; running?: boolean } | null =
+		null;
+	let running: boolean | null = null;
+	const CHECK_POLL_MS = 5000;
+	let checkIntervalId: ReturnType<typeof setInterval> | null = null;
+
+	const refreshRunning = async () => {
+		try {
+			checkResult = await checkServe(localStorage.token);
+			running = checkResult?.running ?? null;
+		} catch (err: any) {
+			// A failed background check shouldn't blank out the buttons - leave
+			// `running` at its last known value rather than surfacing an error here.
+		}
+	};
 
 	const handleStart = async () => {
 		starting = true;
@@ -115,6 +129,7 @@
 
 			await startServe(localStorage.token, form);
 			startLogStream();
+			await refreshRunning();
 		} catch (err: any) {
 			error = err?.detail ?? err ?? $i18n.t('Failed to start');
 		}
@@ -127,6 +142,7 @@
 		try {
 			await stopServe(localStorage.token);
 			stopLogStream();
+			await refreshRunning();
 		} catch (err: any) {
 			error = err?.detail ?? err ?? $i18n.t('Failed to stop');
 		}
@@ -138,6 +154,7 @@
 		error = null;
 		try {
 			checkResult = await checkServe(localStorage.token);
+			running = checkResult?.running ?? null;
 		} catch (err: any) {
 			error = err?.detail ?? err ?? $i18n.t('Failed to check');
 			checkResult = null;
@@ -198,8 +215,17 @@
 		streaming = false;
 	};
 
+	onMount(() => {
+		refreshRunning();
+		checkIntervalId = setInterval(refreshRunning, CHECK_POLL_MS);
+	});
+
 	onDestroy(() => {
 		stopLogStream();
+		if (checkIntervalId) {
+			clearInterval(checkIntervalId);
+			checkIntervalId = null;
+		}
 	});
 
 	loadProfiles();
@@ -265,27 +291,55 @@
 			</div>
 			<div class="grid grid-cols-2 gap-2">
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-ngl">ngl</label>
-					<input id="serve-ngl" class={inputClass} type="number" bind:value={ngl} />
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-ngl">ngl</label>
+					<input
+						id="serve-ngl"
+						class={inputClass}
+						type="number"
+						min="0"
+						step="1"
+						bind:value={ngl}
+					/>
 				</div>
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-ctx">ctx</label>
-					<input id="serve-ctx" class={inputClass} type="number" bind:value={ctx} />
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-ctx">ctx</label>
+					<input
+						id="serve-ctx"
+						class={inputClass}
+						type="number"
+						min="1"
+						step="1"
+						bind:value={ctx}
+					/>
 				</div>
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-threads">threads</label>
-					<input id="serve-threads" class={inputClass} type="number" bind:value={threads} />
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-threads">threads</label>
+					<input
+						id="serve-threads"
+						class={inputClass}
+						type="number"
+						min="1"
+						step="1"
+						bind:value={threads}
+					/>
 				</div>
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-parallel">parallel</label>
-					<input id="serve-parallel" class={inputClass} type="number" bind:value={parallel} />
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-parallel">parallel</label>
+					<input
+						id="serve-parallel"
+						class={inputClass}
+						type="number"
+						min="1"
+						step="1"
+						bind:value={parallel}
+					/>
 				</div>
 				<div class="flex flex-col gap-1 col-span-2">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-ot">ot</label>
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-ot">ot</label>
 					<input id="serve-ot" class={inputClass} type="text" bind:value={ot} placeholder="--ot" />
 				</div>
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-reasoning"
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-reasoning"
 						>{$i18n.t('Reasoning effort')}</label
 					>
 					<NativeSelect
@@ -295,7 +349,7 @@
 					/>
 				</div>
 				<div class="flex flex-col gap-1">
-					<label class="text-[0.6875rem] text-gray-400" for="serve-spec"
+					<label class="text-xs text-gray-500 dark:text-gray-400" for="serve-spec"
 						>{$i18n.t('Speculative decoding')}</label
 					>
 					<NativeSelect bind:value={spec} options={specOptions} className="{inputClass} pr-8" />
@@ -306,14 +360,18 @@
 
 	<!-- Actions -->
 	<div class="flex items-center gap-2">
-		<button class={buttonClass} on:click={handleStart} disabled={starting}>
+		<button class={buttonClass} on:click={handleStart} disabled={starting || running === true}>
 			{#if starting}
 				<Spinner className="size-3" />
 			{:else}
 				{$i18n.t('Start')}
 			{/if}
 		</button>
-		<button class={secondaryButtonClass} on:click={handleStop} disabled={stopping}>
+		<button
+			class={secondaryButtonClass}
+			on:click={handleStop}
+			disabled={stopping || running !== true}
+		>
 			{#if stopping}
 				<Spinner className="size-3" />
 			{:else}
@@ -330,8 +388,9 @@
 
 		{#if checkResult}
 			<div class="text-xs text-gray-500 dark:text-gray-400 ml-2">
-				{$i18n.t('Port')}: {checkResult.port ?? '-'} · {$i18n.t('Model')}: {checkResult.model ??
-					'-'} · {$i18n.t('Profile')}: {checkResult.profile ?? '-'}
+				{running ? $i18n.t('Running') : $i18n.t('Stopped')} · {$i18n.t('Port')}: {checkResult.port ??
+					'-'} · {$i18n.t('Model')}: {checkResult.model ?? '-'} · {$i18n.t('Profile')}: {checkResult.profile ??
+					'-'}
 			</div>
 		{/if}
 	</div>

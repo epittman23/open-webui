@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { getContext, onDestroy, onMount } from 'svelte';
+	import DOMPurify from 'dompurify';
+	import { marked } from 'marked';
 
 	import {
 		startTune,
@@ -7,12 +9,16 @@
 		stopTune,
 		getTuneStatus,
 		getRecentSweeps,
+		getTuneGrids,
+		getServeProfiles,
+		getTestOptions,
 		streamTuneLog,
 		parseBenchmarksEventStream
 	} from '$lib/apis/benchmarks';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import NativeSelect from '$lib/components/common/NativeSelect.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
+	import Badge from '$lib/components/common/Badge.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -38,6 +44,52 @@
 	let seed = 0;
 	let stageExplore = true;
 	let stageRefine = true;
+
+	let profileOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+	let tierOptions: ({ label?: string; value: string } | string)[] = [
+		'smoke',
+		'standard',
+		'full'
+	];
+	let benchmarkOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+	let systemOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+	let gridOptions: ({ label?: string; value: string } | string)[] = [
+		{ value: '', label: $i18n.t('Default') }
+	];
+
+	const loadOptions = async () => {
+		try {
+			const [profilesRes, testOptionsRes, gridsRes] = await Promise.all([
+				getServeProfiles(localStorage.token),
+				getTestOptions(localStorage.token),
+				getTuneGrids(localStorage.token)
+			]);
+			profileOptions = [
+				{ value: '', label: $i18n.t('Default') },
+				...(profilesRes?.profiles ?? [])
+			];
+			tierOptions = testOptionsRes?.tiers?.length ? testOptionsRes.tiers : ['smoke', 'standard', 'full'];
+			benchmarkOptions = [
+				{ value: '', label: $i18n.t('Default') },
+				...(testOptionsRes?.benchmarks ?? [])
+			];
+			systemOptions = [
+				{ value: '', label: $i18n.t('Default') },
+				...(testOptionsRes?.systems ?? [])
+			];
+			gridOptions = [{ value: '', label: $i18n.t('Default') }, ...(gridsRes?.grids ?? [])];
+		} catch (err) {
+			// Field option lists are a convenience, not required to use the form -
+			// leave the fields on their free-text-friendly defaults on failure.
+			console.error('Failed to load tune field options:', err);
+		}
+	};
 
 	let starting = false;
 	let startError: string | null = null;
@@ -210,6 +262,7 @@
 
 	onMount(() => {
 		loadRecentSweeps();
+		loadOptions();
 		// Watch whatever sweep is currently active/latest, if any. If none
 		// exists yet, startStreaming sets statusError and the manual Refresh
 		// button remains available.
@@ -249,12 +302,10 @@
 				<label for="tune-profile" class="text-xs text-gray-500 dark:text-gray-400"
 					>{$i18n.t('Profile')}</label
 				>
-				<input
-					id="tune-profile"
-					type="text"
+				<NativeSelect
 					bind:value={profile}
-					placeholder={$i18n.t('Optional')}
-					class="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
+					options={profileOptions}
+					className="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
 				/>
 			</div>
 
@@ -264,7 +315,7 @@
 				>
 				<NativeSelect
 					bind:value={tier}
-					options={['smoke', 'standard', 'full']}
+					options={tierOptions}
 					className="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-32"
 				/>
 			</div>
@@ -273,12 +324,10 @@
 				<label for="tune-benchmark" class="text-xs text-gray-500 dark:text-gray-400"
 					>{$i18n.t('Benchmark')}</label
 				>
-				<input
-					id="tune-benchmark"
-					type="text"
+				<NativeSelect
 					bind:value={benchmark}
-					placeholder={$i18n.t('Optional')}
-					class="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
+					options={benchmarkOptions}
+					className="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
 				/>
 			</div>
 
@@ -286,12 +335,10 @@
 				<label for="tune-system" class="text-xs text-gray-500 dark:text-gray-400"
 					>{$i18n.t('System')}</label
 				>
-				<input
-					id="tune-system"
-					type="text"
+				<NativeSelect
 					bind:value={system}
-					placeholder={$i18n.t('Optional')}
-					class="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
+					options={systemOptions}
+					className="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
 				/>
 			</div>
 
@@ -299,12 +346,10 @@
 				<label for="tune-grid" class="text-xs text-gray-500 dark:text-gray-400"
 					>{$i18n.t('Grid')}</label
 				>
-				<input
-					id="tune-grid"
-					type="text"
+				<NativeSelect
 					bind:value={grid}
-					placeholder={$i18n.t('Optional')}
-					class="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
+					options={gridOptions}
+					className="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-40"
 				/>
 			</div>
 		</div>
@@ -367,6 +412,7 @@
 				<input
 					id="tune-seed"
 					type="number"
+					min="0"
 					bind:value={seed}
 					class="text-sm px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 outline-none w-20"
 				/>
@@ -385,7 +431,7 @@
 
 			<button
 				type="submit"
-				disabled={starting}
+				disabled={starting || status?.running === true}
 				class="px-3.5 py-1.5 text-sm font-medium rounded-lg bg-black text-white dark:bg-white dark:text-black disabled:opacity-50 flex items-center gap-2"
 			>
 				{#if starting}
@@ -396,7 +442,7 @@
 
 			<button
 				type="button"
-				disabled={stopping}
+				disabled={stopping || status?.running !== true}
 				on:click={() => (showStopConfirm = true)}
 				class="px-3.5 py-1.5 text-sm font-medium rounded-lg bg-red-600 text-white disabled:opacity-50 flex items-center gap-2"
 			>
@@ -674,23 +720,49 @@
 			</div>
 		</div>
 
-		<!-- Pauses / not-measured / blocked -->
-		<div class="grid md:grid-cols-3 gap-3">
-			<div>
-				<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
-					{$i18n.t('Pauses')} ({(status.pauses ?? []).length})
-				</div>
-				{#if (status.pauses ?? []).length > 0}
-					<ul class="text-xs text-gray-600 dark:text-gray-400 list-disc pl-4 space-y-0.5">
-						{#each status.pauses as p}
-							<li>{typeof p === 'string' ? p : JSON.stringify(p)}</li>
-						{/each}
-					</ul>
-				{:else}
-					<div class="text-xs text-gray-400">{$i18n.t('None')}</div>
-				{/if}
+		<!-- Pauses -->
+		<div>
+			<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
+				{$i18n.t('Pauses')} ({(status.pauses ?? []).length})
 			</div>
+			{#if (status.pauses ?? []).length > 0}
+				<div class="scrollbar-hidden relative whitespace-nowrap overflow-x-auto max-w-full">
+					<table class="w-full text-sm text-left text-gray-500 dark:text-gray-400 table-auto">
+						<thead class="text-xs text-gray-800 uppercase bg-transparent dark:text-gray-200">
+							<tr class="border-b-[1.5px] border-gray-50 dark:border-gray-850/30">
+								<th class="px-2.5 py-2">{$i18n.t('Trigger')}</th>
+								<th class="px-2.5 py-2 text-right">{$i18n.t('Round')}</th>
+								<th class="px-2.5 py-2 text-right">{$i18n.t('Temp before→after')}</th>
+								<th class="px-2.5 py-2 text-right">{$i18n.t('Power before→after')}</th>
+								<th class="px-2.5 py-2 text-right">{$i18n.t('Drift ratio')}</th>
+								<th class="px-2.5 py-2">{$i18n.t('Resolution')}</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each status.pauses as p, idx (idx)}
+								<tr class="dark:border-gray-850 text-xs">
+									<td class="px-3 py-1">{p.trigger_kind ?? '—'}</td>
+									<td class="px-3 py-1 text-right">{p.round ?? '—'}</td>
+									<td class="px-3 py-1 text-right"
+										>{fmtNum(p.temp_before, 1)}→{fmtNum(p.temp_after, 1)}</td
+									>
+									<td class="px-3 py-1 text-right"
+										>{fmtNum(p.power_before, 1)}→{fmtNum(p.power_after, 1)}</td
+									>
+									<td class="px-3 py-1 text-right">{fmtNum(p.drift_ratio)}</td>
+									<td class="px-3 py-1">{p.resolution ?? '—'}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{:else}
+				<div class="text-xs text-gray-400">{$i18n.t('None')}</div>
+			{/if}
+		</div>
 
+		<!-- Not-measured / blocked -->
+		<div class="grid md:grid-cols-2 gap-3">
 			<div>
 				<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
 					{$i18n.t('Not measured')} ({(status.not_measured ?? []).length})
@@ -722,40 +794,135 @@
 			</div>
 		</div>
 
-		<!-- Design audit / adoption -->
+		<!-- Design audit -->
 		{#if status.design_audit}
 			<div>
 				<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
 					{$i18n.t('Design audit')}
 				</div>
-				<pre class="text-xs bg-gray-50 dark:bg-gray-850 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{typeof status.design_audit ===
-					'string'
-						? status.design_audit
-						: JSON.stringify(status.design_audit, null, 2)}</pre>
+				<div
+					class="prose dark:prose-invert max-w-none text-sm bg-gray-50 dark:bg-gray-850 rounded-lg p-3"
+				>
+					{@html DOMPurify.sanitize(marked.parse(status.design_audit) as string)}
+				</div>
 			</div>
 		{/if}
 
+		<!-- Adoption -->
 		{#if status.adoption}
 			<div>
 				<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
 					{$i18n.t('Adoption')}
 				</div>
-				<pre class="text-xs bg-gray-50 dark:bg-gray-850 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{typeof status.adoption ===
-					'string'
-						? status.adoption
-						: JSON.stringify(status.adoption, null, 2)}</pre>
+				<div class="rounded-lg bg-gray-50 dark:bg-gray-850 p-3 flex flex-col gap-2">
+					<div class="grid sm:grid-cols-2 gap-3 text-sm">
+						<div>
+							<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Candidate SHA')}</div>
+							<div class="font-medium text-gray-900 dark:text-white truncate">
+								{status.adoption.candidate_sha ?? '—'}
+							</div>
+						</div>
+						<div>
+							<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Config ID')}</div>
+							<div class="font-medium text-gray-900 dark:text-white truncate">
+								{status.adoption.config_id ?? '—'}
+							</div>
+						</div>
+					</div>
+					{#if status.adoption.flags}
+						<code
+							class="text-xs bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 w-fit whitespace-pre-wrap break-all"
+							>{status.adoption.flags}</code
+						>
+					{/if}
+					{#if status.adoption.reduces_context}
+						<Badge type="warning" content={$i18n.t('Reduces context')} />
+					{/if}
+					{#if status.adoption.note}
+						<div class="text-xs text-gray-600 dark:text-gray-400">{status.adoption.note}</div>
+					{/if}
+				</div>
 			</div>
 		{/if}
 
+		<!-- Guard -->
 		{#if status.guard}
 			<div>
 				<div class="text-xs font-normal text-gray-700 dark:text-gray-300 mb-1 px-0.5">
 					{$i18n.t('Guard')}
 				</div>
-				<pre class="text-xs bg-gray-50 dark:bg-gray-850 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{typeof status.guard ===
-					'string'
-						? status.guard
-						: JSON.stringify(status.guard, null, 2)}</pre>
+				<div class="grid sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Paired items')}</div>
+						<div class="font-medium text-gray-900 dark:text-white">{status.guard.n ?? '—'}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Wins')}</div>
+						<div class="font-medium text-gray-900 dark:text-white">{status.guard.b ?? '—'}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Losses')}</div>
+						<div class="font-medium text-gray-900 dark:text-white">{status.guard.c ?? '—'}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('McNemar p-value')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">{fmtNum(status.guard.p, 4)}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('Discordant pairs')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">
+							{status.guard.discordant ?? '—'}
+						</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('PSI (prior shift index)')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">{fmtNum(status.guard.psi)}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('Winner passed')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">
+							{status.guard.winner_passed ?? '—'}
+						</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('Incumbent passed')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">
+							{status.guard.incumbent_passed ?? '—'}
+						</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">
+							{$i18n.t('Min. detectable effect')}
+						</div>
+						<div class="font-medium text-gray-900 dark:text-white">{fmtNum(status.guard.mde)}</div>
+					</div>
+					<div class="p-2.5 rounded-lg bg-gray-50 dark:bg-gray-850">
+						<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Items needed')}</div>
+						<div class="font-medium text-gray-900 dark:text-white">
+							{status.guard.needed ?? '—'}
+						</div>
+					</div>
+					<div
+						class="p-2.5 rounded-lg {status.guard.regressed
+							? 'bg-red-500/10'
+							: 'bg-gray-50 dark:bg-gray-850'}"
+					>
+						<div class="text-xs text-gray-500 dark:text-gray-400">{$i18n.t('Regressed?')}</div>
+						<div class="font-medium text-gray-900 dark:text-white">
+							{status.guard.regressed ? $i18n.t('Yes') : $i18n.t('No')}
+						</div>
+					</div>
+				</div>
 			</div>
 		{/if}
 	{/if}

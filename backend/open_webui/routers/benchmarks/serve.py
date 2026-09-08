@@ -106,7 +106,12 @@ async def check_serve(user=Depends(get_admin_user)):
     p = env_profile.port(prof)
     async with aiohttp.ClientSession() as session:
         model = await env_profile.served_model(session, p, prof)
-    return {'port': p, 'model': model, 'profile': prof.get('name')}
+    return {
+        'port': p,
+        'model': model,
+        'profile': prof.get('name'),
+        'running': _job is not None and _job.running,
+    }
 
 
 @router.get('/stream')

@@ -86,4 +86,19 @@ async def get_answer(
     record = await BenchmarkAnswers.answer_for(benchmark, item_id, suite_run_id=run)
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
-    return {'markdown': _answer_document(record, thinking=thinking)}
+    reasoning = record.get('reasoning') or ''
+    return {
+        'benchmark': record['benchmark'],
+        'item_id': record['item_id'],
+        'model': record['model'],
+        'config_id': record.get('config_id'),
+        'suite_run_id': record['suite_run_id'],
+        'system_name': record.get('system_name'),
+        'outcome': record['outcome'],
+        'reason': record.get('reason'),
+        'timings': record.get('timings'),
+        'prompt': record.get('prompt', ''),
+        'reasoning': reasoning if thinking else None,
+        'reasoning_chars': len(reasoning),
+        'content': record.get('content', ''),
+    }

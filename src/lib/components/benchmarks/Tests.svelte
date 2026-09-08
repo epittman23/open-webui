@@ -215,7 +215,7 @@
 	{:else}
 		<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-2">
 			<div class="flex flex-col gap-1">
-				<label class="text-[0.6875rem] text-gray-400" for="tests-tier">{$i18n.t('Tier')}</label>
+				<label class="text-xs text-gray-500 dark:text-gray-400" for="tests-tier">{$i18n.t('Tier')}</label>
 				<NativeSelect
 					bind:value={suite}
 					options={tiers}
@@ -224,7 +224,7 @@
 				/>
 			</div>
 			<div class="flex flex-col gap-1">
-				<label class="text-[0.6875rem] text-gray-400" for="tests-benchmark"
+				<label class="text-xs text-gray-500 dark:text-gray-400" for="tests-benchmark"
 					>{$i18n.t('Benchmark')}</label
 				>
 				<NativeSelect
@@ -235,7 +235,7 @@
 				/>
 			</div>
 			<div class="flex flex-col gap-1">
-				<label class="text-[0.6875rem] text-gray-400" for="tests-system">{$i18n.t('System')}</label
+				<label class="text-xs text-gray-500 dark:text-gray-400" for="tests-system">{$i18n.t('System')}</label
 				>
 				<NativeSelect
 					bind:value={system}
@@ -245,7 +245,7 @@
 				/>
 			</div>
 			<div class="flex flex-col gap-1">
-				<label class="text-[0.6875rem] text-gray-400" for="tests-slice">{$i18n.t('Slice')}</label>
+				<label class="text-xs text-gray-500 dark:text-gray-400" for="tests-slice">{$i18n.t('Slice')}</label>
 				<input
 					id="tests-slice"
 					class={inputClass}

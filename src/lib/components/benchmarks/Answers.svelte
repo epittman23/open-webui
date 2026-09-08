@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount, getContext } from 'svelte';
-	import DOMPurify from 'dompurify';
-	import { marked } from 'marked';
 	import { getAnswerRuns, getAnswers, getAnswerOne } from '$lib/apis/benchmarks';
 	import Spinner from '$lib/components/common/Spinner.svelte';
 	import NativeSelect from '$lib/components/common/NativeSelect.svelte';
 	import Badge from '$lib/components/common/Badge.svelte';
+	import Messages from '$lib/components/chat/Messages.svelte';
 
 	const i18n = getContext('i18n');
 
@@ -26,6 +25,32 @@
 		reason?: string;
 		reasoning_chars?: number;
 	};
+
+	type AnswerDetail = {
+		benchmark: string;
+		item_id: string;
+		model: string;
+		config_id: string | null;
+		suite_run_id: string;
+		system_name: string | null;
+		outcome: string;
+		reason?: string;
+		timings: Record<string, unknown> | null;
+		prompt: string;
+		reasoning: string | null;
+		reasoning_chars: number;
+		content: string;
+	};
+
+	// Benchmark prompts/responses are frequently code (# comments are
+	// common), which the chat markdown pipeline would otherwise misread as
+	// ATX headings. Wrapping the whole thing in a fenced code block instead
+	// routes it through this app's CodeMirror-based code-block widget,
+	// which does not size correctly outside the live chat's own layout
+	// (renders at ~0 height here) - so headings are escaped in place
+	// instead, keeping the text on the same plain-prose path already used
+	// for the rest of this preview.
+	const escapeHeadings = (text: string): string => (text ?? '').replace(/^(#{1,6})(\s)/gm, '\\$1$2');
 
 	// -------------------------------------------------------------------
 	// Run picker
@@ -94,7 +119,7 @@
 	$: if (selectedRun || filter) {
 		loadRows();
 		selectedRow = null;
-		answerMarkdown = '';
+		answerDetail = null;
 	}
 
 	const outcomeBadgeType = (outcome: string): string => {
@@ -105,30 +130,69 @@
 	};
 
 	// -------------------------------------------------------------------
-	// Answer detail
+	// Answer detail - rendered as a read-only, input-less chat transcript
+	// (reusing the same Messages component the real chat view/shared-chat
+	// view use) rather than a hand-rolled markdown dump.
 	// -------------------------------------------------------------------
 	let selectedRow: AnswerRow | null = null;
 	let thinking = false;
-	let answerMarkdown = '';
+	let answerDetail: AnswerDetail | null = null;
 	let loadingAnswer = false;
 	let answerError: string | null = null;
+
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let history: any = { messages: {}, currentId: null };
+	let autoScroll = true;
+
+	const buildHistory = (detail: AnswerDetail) => {
+		const userId = 'answer-preview-user';
+		const assistantId = 'answer-preview-assistant';
+		const reasoningBlock = detail.reasoning
+			? `<details type="reasoning">\n${escapeHeadings(detail.reasoning)}\n</details>\n\n`
+			: '';
+		history = {
+			messages: {
+				[userId]: {
+					id: userId,
+					parentId: null,
+					childrenIds: [assistantId],
+					role: 'user',
+					content: escapeHeadings(detail.prompt),
+					timestamp: 0,
+					done: true
+				},
+				[assistantId]: {
+					id: assistantId,
+					parentId: userId,
+					childrenIds: [],
+					role: 'assistant',
+					content: reasoningBlock + escapeHeadings(detail.content),
+					model: detail.model,
+					timestamp: 0,
+					done: true
+				}
+			},
+			currentId: assistantId
+		};
+	};
 
 	const loadAnswer = async (row: AnswerRow) => {
 		if (!selectedRun) return;
 		loadingAnswer = true;
 		answerError = null;
 		try {
-			const res = await getAnswerOne(localStorage.token, {
+			const res: AnswerDetail = await getAnswerOne(localStorage.token, {
 				run: selectedRun,
 				benchmark: row.benchmark,
 				item_id: row.item_id,
 				thinking
 			});
-			answerMarkdown = res?.markdown ?? '';
+			answerDetail = res;
+			buildHistory(res);
 		} catch (err) {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			answerError = (err as any)?.detail ?? String(err);
-			answerMarkdown = '';
+			answerDetail = null;
 		}
 		loadingAnswer = false;
 	};
@@ -138,14 +202,14 @@
 		loadAnswer(row);
 	};
 
-	// Re-fetch the current answer when "show thinking" is toggled.
+	// Re-fetch the current answer when "show thinking" is toggled - the
+	// backend redacts reasoning server-side when off, so this stays a
+	// real request rather than a client-side collapse.
 	const onThinkingChange = () => {
 		if (selectedRow) {
 			loadAnswer(selectedRow);
 		}
 	};
-
-	$: renderedAnswer = answerMarkdown ? DOMPurify.sanitize(marked.parse(answerMarkdown)) : '';
 
 	onMount(() => {
 		loadRuns();
@@ -243,9 +307,31 @@
 		</div>
 	{:else if answerError}
 		<div class="text-xs text-red-600 dark:text-red-400 px-0.5">{answerError}</div>
-	{:else if renderedAnswer}
-		<div class="prose dark:prose-invert max-w-none text-sm">
-			{@html renderedAnswer}
+	{:else if answerDetail}
+		<div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-2 px-0.5">
+			<span class="font-medium text-gray-900 dark:text-white">{answerDetail.model}</span>
+			{#if answerDetail.config_id}<span>· {answerDetail.config_id}</span>{/if}
+			{#if answerDetail.system_name}<span>· {answerDetail.system_name}</span>{/if}
+			<Badge type={outcomeBadgeType(answerDetail.outcome)} content={answerDetail.outcome} />
+			{#if answerDetail.reason}<span>— {answerDetail.reason}</span>{/if}
+		</div>
+		<div class="rounded-lg border border-gray-50 dark:border-gray-850/50 min-h-[16rem]">
+			<Messages
+				className="flex pt-4 pb-4"
+				chatId=""
+				readOnly={true}
+				editCodeBlock={false}
+				selectedModels={[answerDetail.model]}
+				prompt={''}
+				atSelectedModel={undefined}
+				bind:history
+				bind:autoScroll
+				sendMessage={() => {}}
+				continueResponse={() => {}}
+				regenerateResponse={() => {}}
+				mergeResponses={() => {}}
+				chatActionHandler={() => {}}
+			/>
 		</div>
 	{:else}
 		<div class="text-xs text-gray-400 px-0.5">

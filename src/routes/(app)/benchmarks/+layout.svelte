@@ -123,7 +123,7 @@
 			</div>
 		</nav>
 
-		<div class=" flex-1 max-h-full overflow-y-auto">
+		<div class=" flex-1 max-h-full overflow-y-auto px-3">
 			<slot />
 		</div>
 	</div>
