@@ -105,6 +105,15 @@
 		try {
 			checkResult = await checkServe(localStorage.token);
 			running = checkResult?.running ?? null;
+			// Reconnect the log stream whenever a server turns out to be running
+			// but nothing here is currently tailing it - the common case being
+			// this component having just (re)mounted (e.g. the user navigated to
+			// another benchmarks tab and back), which resets `streaming`/
+			// `logLines` to their initial empty state even though the server
+			// itself, and the backend's buffered log history, are unaffected.
+			if (running === true && !streaming) {
+				startLogStream();
+			}
 		} catch (err: any) {
 			// A failed background check shouldn't blank out the buttons - leave
 			// `running` at its last known value rather than surfacing an error here.

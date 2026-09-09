@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 import aiohttp
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -30,9 +31,35 @@ from open_webui.benchmarks.tune_schedule import GRID_DIR, TuneRefused
 from open_webui.constants import ERROR_MESSAGES
 from open_webui.utils.auth import get_admin_user
 
+log = logging.getLogger(__name__)
+
 router = APIRouter()
 
 _task: asyncio.Task | None = None
+
+# `_task` is fire-and-forget by design (a sweep runs for minutes to hours),
+# but that means any exception raised before or during `start_sweep()`/
+# `resume_sweep()` -- a bad grid file, a profile that fails to resolve, the
+# port already held by a server started from the Serve page, llama-server
+# refusing to load -- previously vanished into an unretrieved task
+# exception: the POST to /start had already returned 200, so the frontend
+# had no way to know the sweep never actually began. `_last_error` is set
+# from inside `_run_sweep` and surfaced through /status and /log so a
+# failed start is visible instead of silently doing nothing.
+_last_error: str | None = None
+
+
+async def _run_sweep(start):
+    global _last_error
+    try:
+        async with aiohttp.ClientSession() as session:
+            return await start(session)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - deliberately broad, see module docstring above
+        log.exception('benchmarks tune sweep failed to start')
+        _last_error = str(exc) or exc.__class__.__name__
+        raise
 
 
 class TuneStartForm(BaseModel):
@@ -60,35 +87,29 @@ def _running() -> bool:
 
 @router.post('/start')
 async def start_tune(form_data: TuneStartForm, user=Depends(get_admin_user)):
-    global _task
+    global _task, _last_error
     if _running():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=ERROR_MESSAGES.DEFAULT('a sweep is already running')
         )
     opts = form_data.to_options()
-
-    async def _run():
-        async with aiohttp.ClientSession() as session:
-            return await tune.start_sweep(opts, session)
-
-    _task = asyncio.create_task(_run())
+    _last_error = None
+    _task = asyncio.create_task(_run_sweep(lambda session: tune.start_sweep(opts, session)))
     return {'started': True}
 
 
 @router.post('/resume')
 async def resume_tune(sweep_id: str | None = None, user=Depends(get_admin_user)):
-    global _task
+    global _task, _last_error
     if _running():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=ERROR_MESSAGES.DEFAULT('a sweep is already running')
         )
     defaults = tune.SweepOptions()
-
-    async def _run():
-        async with aiohttp.ClientSession() as session:
-            return await tune.resume_sweep(sweep_id, defaults, session)
-
-    _task = asyncio.create_task(_run())
+    _last_error = None
+    _task = asyncio.create_task(
+        _run_sweep(lambda session: tune.resume_sweep(sweep_id, defaults, session))
+    )
     return {'resumed': True}
 
 
@@ -105,8 +126,15 @@ async def get_status(sweep_id: str | None = Query(None), user=Depends(get_admin_
     try:
         result = await tune.sweep_status(sweep_id)
     except TuneRefused as exc:
+        # A start/resume attempt that failed before ever creating a sweep
+        # row (e.g. no grid resolves, the port is already held) has nothing
+        # for sweep_status() to find -- surface the failure instead of a
+        # bare 404 the frontend has no sweep-shaped state to show alongside.
+        if _last_error is not None:
+            return {'running': _running(), 'last_error': _last_error}
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     result['running'] = _running()
+    result['last_error'] = _last_error
     return result
 
 
@@ -133,10 +161,14 @@ async def stream_status(sweep_id: str | None = Query(None), user=Depends(get_adm
         while True:
             try:
                 report = await tune.sweep_status(sweep_id)
+                report['running'] = _running()
+                report['last_error'] = _last_error
+                yield f'data: {json.dumps(report, default=str)}\n\n'
             except TuneRefused as exc:
-                yield f'data: {json.dumps({"error": str(exc)})}\n\n'
-                return
-            yield f'data: {json.dumps(report, default=str)}\n\n'
+                if _last_error is not None:
+                    yield f'data: {json.dumps({"running": _running(), "last_error": _last_error})}\n\n'
+                else:
+                    yield f'data: {json.dumps({"error": str(exc)})}\n\n'
             if not _running():
                 yield 'event: done\ndata: {}\n\n'
                 return

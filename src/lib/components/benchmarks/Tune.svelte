@@ -458,6 +458,12 @@
 				{startError}
 			</div>
 		{/if}
+
+		{#if status?.last_error}
+			<div class="text-sm text-red-700 dark:text-red-200 bg-red-500/10 rounded-lg px-3 py-2">
+				{$i18n.t('Sweep failed to start')}: {status.last_error}
+			</div>
+		{/if}
 	</form>
 
 	<ConfirmDialog

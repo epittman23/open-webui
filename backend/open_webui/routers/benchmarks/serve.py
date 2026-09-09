@@ -14,6 +14,8 @@ Serve-like features already have.
 
 from __future__ import annotations
 
+import asyncio
+import collections
 import json
 import os
 
@@ -31,6 +33,32 @@ from open_webui.utils.auth import get_admin_user
 router = APIRouter()
 
 _job: Command | None = None
+
+# Log draining is a background task independent of any HTTP connection, not
+# something `/stream` does itself -- a `Command.lines()` iterator only ever
+# gets read once, so if the previous reader was the last SSE client and it
+# disconnected (a browser tab navigating away aborts the fetch), nobody was
+# left draining the subprocess's stdout pipe and every line since is gone.
+# `_log_buffer` keeps recent history so a client reconnecting (the same tab
+# coming back, or a second one) sees it immediately instead of a blank pane,
+# and `_subscribers` fans new lines out to every currently-connected client.
+_LOG_BUFFER_LINES = 2000
+_log_buffer: collections.deque[str] = collections.deque(maxlen=_LOG_BUFFER_LINES)
+_subscribers: set[asyncio.Queue] = set()
+_drain_task: asyncio.Task | None = None
+
+_DONE = object()  # sentinel pushed to subscriber queues when the job ends
+
+
+async def _drain_log(job: Command) -> None:
+    try:
+        async for line in job.lines():
+            _log_buffer.append(line)
+            for queue in _subscribers:
+                queue.put_nowait(line)
+    finally:
+        for queue in _subscribers:
+            queue.put_nowait(_DONE)
 
 _OVERRIDE_ENV = {
     'ngl': 'LLAMA_NGL',
@@ -68,7 +96,7 @@ async def get_profile(name: str, user=Depends(get_admin_user)):
 
 @router.post('/start')
 async def start_serve(form_data: ServeStartForm, user=Depends(get_admin_user)):
-    global _job
+    global _job, _drain_task
     if _job is not None and _job.running:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=ERROR_MESSAGES.DEFAULT('a server is already running')
@@ -88,6 +116,8 @@ async def start_serve(form_data: ServeStartForm, user=Depends(get_admin_user)):
     command = f'lllm-serve {form_data.profile}' if form_data.profile else 'lllm-serve'
     _job = Command(command, env=env)
     await _job.start()
+    _log_buffer.clear()
+    _drain_task = asyncio.create_task(_drain_log(_job))
     return {'started': True}
 
 
@@ -116,13 +146,37 @@ async def check_serve(user=Depends(get_admin_user)):
 
 @router.get('/stream')
 async def stream_serve(user=Depends(get_admin_user)):
-    job = _job
-    if job is None:
+    """Replay buffered history, then tail new lines as they arrive.
+
+    Independent of `_drain_log`'s own read of the subprocess -- this only
+    ever reads from `_log_buffer`/a subscriber queue, so a client
+    disconnecting (tab navigation) and reconnecting later sees the lines it
+    missed (up to `_LOG_BUFFER_LINES`) instead of a blank pane, and does not
+    stop the subprocess's stdout from being drained in the meantime.
+    """
+    if _job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
 
+    queue: asyncio.Queue = asyncio.Queue()
+    _subscribers.add(queue)
+    backlog = list(_log_buffer)
+
     async def event_stream():
-        async for line in job.lines():
-            yield f'data: {json.dumps({"line": line})}\n\n'
-        yield 'event: done\ndata: {}\n\n'
+        try:
+            for line in backlog:
+                yield f'data: {json.dumps({"line": line})}\n\n'
+            if _job is not None and not _job.running and queue.empty():
+                # The job already ended before this client connected, and
+                # everything it ever printed is in `backlog` above.
+                yield 'event: done\ndata: {}\n\n'
+                return
+            while True:
+                item = await queue.get()
+                if item is _DONE:
+                    yield 'event: done\ndata: {}\n\n'
+                    return
+                yield f'data: {json.dumps({"line": item})}\n\n'
+        finally:
+            _subscribers.discard(queue)
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')
