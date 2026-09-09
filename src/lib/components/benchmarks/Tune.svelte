@@ -282,6 +282,14 @@
 
 	const fmtNum = (n: unknown, digits = 3): string =>
 		typeof n === 'number' ? n.toFixed(digits) : '—';
+
+	const fmtElapsed = (seconds: unknown): string => {
+		if (typeof seconds !== 'number') return '—';
+		const s = Math.floor(seconds);
+		const m = Math.floor(s / 60);
+		const rem = s % 60;
+		return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
+	};
 </script>
 
 <div class="flex flex-col gap-4">
@@ -565,6 +573,22 @@
 		</button>
 	</div>
 
+	{#if status?.current_visit}
+		<div
+			class="text-xs text-yellow-700 dark:text-yellow-400 bg-yellow-500/10 rounded-lg px-3 py-2 flex items-center gap-1.5"
+		>
+			<span class="size-1.5 rounded-full bg-yellow-500 animate-pulse"></span>
+			{$i18n.t('Running')} {status.current_visit.label ?? status.current_visit.candidate_sha} —
+			{fmtElapsed(status.current_visit.elapsed_seconds)}
+			{#if status.current_visit.tokens_per_second}
+				· {fmtNum(status.current_visit.tokens_per_second, 1)} {$i18n.t('tok/s')}
+				{#if status.current_visit.n_gen}({status.current_visit.n_gen} {$i18n.t('tokens generated')}){/if}
+			{:else}
+				· {$i18n.t('loading model')}
+			{/if}
+		</div>
+	{/if}
+
 	{#if statusError}
 		<div class="text-sm text-red-700 dark:text-red-200 bg-red-500/10 rounded-lg px-3 py-2">
 			{statusError}
@@ -688,12 +712,16 @@
 					</thead>
 					<tbody>
 						{#each sortedCandidates as c (c.candidate_sha ?? candidateName(c))}
+							{@const live =
+								status?.current_visit?.candidate_sha === c.candidate_sha ? status.current_visit : null}
 							<tr
-								class="dark:border-gray-850 text-xs {c.status === 'winner'
-									? 'bg-green-500/10'
-									: c.is_baseline
-										? 'bg-blue-500/5'
-										: ''}"
+								class="dark:border-gray-850 text-xs {live
+									? 'bg-yellow-500/10'
+									: c.status === 'winner'
+										? 'bg-green-500/10'
+										: c.is_baseline
+											? 'bg-blue-500/5'
+											: ''}"
 							>
 								<td class="px-3 py-1 font-normal text-gray-900 dark:text-white">
 									{candidateName(c)}
@@ -707,9 +735,20 @@
 								<td class="px-3 py-1 text-right">{fmtNum(c.score_pct, 1)}</td>
 								<td class="px-3 py-1 text-right">{c.paired_items ?? '—'}</td>
 								<td class="px-3 py-1">
-									{c.status ?? '—'}
-									{#if c.status_reason}
-										<span class="text-gray-400"> — {c.status_reason}</span>
+									{#if live}
+										<span class="text-yellow-700 dark:text-yellow-400">
+											● {$i18n.t('running')} — {fmtElapsed(live.elapsed_seconds)}
+											{#if live.tokens_per_second}
+												· {fmtNum(live.tokens_per_second, 1)} {$i18n.t('tok/s')}
+											{:else}
+												· {$i18n.t('loading')}
+											{/if}
+										</span>
+									{:else}
+										{c.status ?? '—'}
+										{#if c.status_reason}
+											<span class="text-gray-400"> — {c.status_reason}</span>
+										{/if}
 									{/if}
 								</td>
 							</tr>

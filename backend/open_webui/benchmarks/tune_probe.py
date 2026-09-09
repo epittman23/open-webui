@@ -51,6 +51,14 @@ if TYPE_CHECKING:  # pragma: no cover - typing only, avoids a real import cycle
 # ---------------------------------------------------------------------------
 OOM_PATTERN = re.compile(r'out of memory|cudaMalloc|failed to allocate|ggml_backend_.*alloc.*failed', re.I)
 
+# llama-server's own per-slot progress line (printed every few seconds at
+# -lv 4, well before a request finishes): `n_gen =    116, tg =   5.07 t/s,
+# tg_3s =   5.06 t/s`. tg_3s is a rolling window and the more responsive of
+# the two for "how fast is this candidate generating right now" -- tg is a
+# cumulative average since the request started, which moves slowly once
+# n_gen is already large.
+GEN_PROGRESS_PATTERN = re.compile(r'n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s(?:,\s*tg_3s\s*=\s*([\d.]+)\s*t/s)?')
+
 
 #: Serving is not the only way to fail, and the four are not interchangeable.
 #: An OOM prunes a region of the grid; a load error is a bug in the grid or
@@ -86,6 +94,13 @@ class Server:
         self.load_ms: float | None = None
         self.tail: deque[str] = deque(maxlen=40)
         self._drain: asyncio.Task | None = None
+        # The most recent generation-progress reading, for a caller that
+        # wants to show live "how far along is this request" state (the
+        # Tune page's live status) without re-parsing `tail` itself. `None`
+        # until the first progress line arrives, which is normal during
+        # loading and prompt processing.
+        self.n_gen: int | None = None
+        self.tokens_per_second: float | None = None
 
     def _command(self) -> str:
         launch = os.environ.get('LLAMA_TUNE_LAUNCH')
@@ -107,6 +122,10 @@ class Server:
         try:
             async for line in self.cmd.lines():
                 self.tail.append(line)
+                m = GEN_PROGRESS_PATTERN.search(line)
+                if m:
+                    self.n_gen = int(m.group(1))
+                    self.tokens_per_second = float(m.group(3) or m.group(2))
         except (ValueError, OSError):
             pass
 

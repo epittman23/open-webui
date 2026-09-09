@@ -135,6 +135,7 @@ async def get_status(sweep_id: str | None = Query(None), user=Depends(get_admin_
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     result['running'] = _running()
     result['last_error'] = _last_error
+    result['current_visit'] = tune.current_visit_progress(result['sweep_id']) if result.get('sweep_id') else None
     return result
 
 
@@ -163,6 +164,9 @@ async def stream_status(sweep_id: str | None = Query(None), user=Depends(get_adm
                 report = await tune.sweep_status(sweep_id)
                 report['running'] = _running()
                 report['last_error'] = _last_error
+                report['current_visit'] = (
+                    tune.current_visit_progress(report['sweep_id']) if report.get('sweep_id') else None
+                )
                 yield f'data: {json.dumps(report, default=str)}\n\n'
             except TuneRefused as exc:
                 if _last_error is not None:

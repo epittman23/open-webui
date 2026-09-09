@@ -593,6 +593,41 @@ class Cooldown:
 # ---------------------------------------------------------------------------
 # the sweep
 # ---------------------------------------------------------------------------
+
+# Keyed by sweep_id rather than held on the Sweep instance alone, so a
+# status/log poll (routers/benchmarks/tune.py, which only ever has a
+# sweep_id, never the live Sweep object a background task is running) can
+# look up "what is this sweep doing right now" without threading the
+# instance itself through the module boundary. Sweep.visit() is the only
+# writer: it registers an entry for the duration of one candidate's visit
+# and removes it in the same `finally` that already stops that visit's
+# server, so a sweep that is not between visits (loading a fresh candidate
+# is still "in a visit"; between rounds is not) simply has no entry.
+_current_visits: dict[str, dict] = {}
+
+
+def current_visit_progress(sweep_id: str) -> dict | None:
+    """Live progress for whichever candidate `sweep_id` is visiting right now.
+
+    A round can sit on an unchanging DB row for minutes at a time -- a
+    partially-offloaded MoE model reloading, then generating at single-digit
+    tokens/sec -- with nothing to show until the visit closes. This reads
+    llama-server's own periodic progress line (Server._pump() in
+    tune_probe.py already parses it) rather than waiting for that.
+    """
+    visit = _current_visits.get(sweep_id)
+    if visit is None:
+        return None
+    server = visit['server']
+    return {
+        'candidate_sha': visit['candidate_sha'],
+        'label': visit['label'],
+        'elapsed_seconds': time.time() - visit['started_at'],
+        'n_gen': server.n_gen,
+        'tokens_per_second': server.tokens_per_second,
+    }
+
+
 class Sweep:
     """One search: candidates, rounds, drift control, guard, verdict.
 
@@ -811,6 +846,12 @@ class Sweep:
         drift: str | None = None
         records: list[dict] = []
         t0 = time.time()
+        _current_visits[self.sweep_id] = {
+            'candidate_sha': cand.sha,
+            'label': cand.label,
+            'started_at': t0,
+            'server': server,
+        }
         try:
             await server.start()
             load_ms = await server.wait()
@@ -888,6 +929,7 @@ class Sweep:
         finally:
             await server.stop()
             self.serve_seconds += time.time() - t0
+            _current_visits.pop(self.sweep_id, None)
 
         counts = not drift
         await BenchmarkTuneVisits.close_visit(
