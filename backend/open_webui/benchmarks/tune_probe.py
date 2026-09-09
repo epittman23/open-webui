@@ -4,7 +4,7 @@ Ported from local-llm's scripts/llama_tune.py (outer repo). Split out of
 benchmarks/tune.py (the round-elimination orchestrator) and
 benchmarks/tune_schedule.py (budget/round arithmetic and the search space)
 because this is the module's other clearly separable concern: the mechanics
-of getting one candidate's `llama-serve` up, watching it for a mid-visit
+of getting one candidate's `lllm-serve` up, watching it for a mid-visit
 collapse, and reading `nvidia-smi` when nothing is served at all (which the
 telemetry recorder cannot do, since it needs a served port).
 
@@ -70,7 +70,7 @@ def _tail_reason(text: str) -> str:
 
 
 class Server:
-    """One `llama-serve` under a candidate's overrides, and its readiness.
+    """One `lllm-serve` under a candidate's overrides, and its readiness.
 
     Readiness is `GET /v1/models` over a shared aiohttp session (the same
     session a caller uses for the rest of a visit's requests), deliberately
@@ -91,7 +91,7 @@ class Server:
         launch = os.environ.get('LLAMA_TUNE_LAUNCH')
         if launch:
             return f'{launch} {shlex.quote(self.candidate.profile)}'
-        return f'llama-serve {shlex.quote(self.candidate.profile)}'
+        return f'lllm-serve {shlex.quote(self.candidate.profile)}'
 
     async def start(self) -> None:
         self.cmd = Command(self._command(), env=self.candidate.env(), plain=True)
@@ -146,7 +146,7 @@ class Server:
     async def stop(self) -> None:
         """SIGINT first, so the recorder closes its own run.
 
-        `llama-serve` backgrounds the telemetry recorder and signals it on
+        `lllm-serve` backgrounds the telemetry recorder and signals it on
         the way out; killing the group outright leaves the run row open for
         a stale-run sweep to close as 'stale' instead of 'clean'. A sweep of
         eighty visits would then have the store claiming eighty servers

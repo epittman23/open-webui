@@ -1172,7 +1172,11 @@ class Sweep:
                     break
                 rnd += 1
                 alive = await self.run_round(rnd, 'explore', alive, lo, hi)
-                if self.ended_reason != 'complete':
+                if self.ended_reason != 'complete' or not alive:
+                    # No survivors: nothing left for a further round to visit
+                    # (run_round()'s rotation indexes by len(alive), which is
+                    # zero here), and finish() already turns an empty `alive`
+                    # into a clean 'rejected' verdict on its own.
                     break
 
             cursor = self.schedule.slices[-1][1] if self.schedule.slices else 0
@@ -1688,7 +1692,7 @@ async def resume_sweep(sweep_id: str | None, defaults: SweepOptions, session: ai
                     break
                 rnd = i
                 alive = await sweep.run_round(rnd, 'explore', alive, lo, hi)
-                if sweep.ended_reason != 'complete':
+                if sweep.ended_reason != 'complete' or not alive:
                     break
             else:
                 cursor = sweep.schedule.slices[-1][1] if sweep.schedule.slices else cursor
