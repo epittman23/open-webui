@@ -2,8 +2,9 @@
 	import { onMount, onDestroy, getContext } from 'svelte';
 	import type { Writable } from 'svelte/store';
 	import type { i18n as i18nType } from 'i18next';
-	import { getLive } from '$lib/apis/benchmarks';
+	import { getLive, killLive } from '$lib/apis/benchmarks';
 	import Spinner from '$lib/components/common/Spinner.svelte';
+	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
 
 	const i18n = getContext<Writable<i18nType>>('i18n');
 
@@ -32,6 +33,10 @@
 
 	let intervalId: ReturnType<typeof setInterval> | null = null;
 
+	let killing = false;
+	let killError: string | null = null;
+	let showKillConfirm = false;
+
 	const formatValue = (value: unknown): string => {
 		if (value === null || value === undefined) return '-';
 		if (typeof value === 'number') {
@@ -56,13 +61,25 @@
 			summary = res?.summary ?? {};
 			deltas = res?.deltas ?? {};
 			requests = res?.requests ?? 0;
-			recentSamples = res?.recent_samples ?? [];
+			recentSamples = [...(res?.recent_samples ?? [])].reverse();
 			warning = res?.warning ?? null;
 			error = null;
 		} catch (err: any) {
 			error = err?.detail ?? err ?? $i18n.t('Failed to load live status');
 		}
 		loading = false;
+	};
+
+	const handleKillConfirmed = async () => {
+		killing = true;
+		killError = null;
+		try {
+			await killLive(localStorage.token);
+			await poll();
+		} catch (err: any) {
+			killError = err?.detail ?? err ?? $i18n.t('Failed to kill the active run');
+		}
+		killing = false;
 	};
 
 	onMount(() => {
@@ -81,6 +98,19 @@
 <div class="flex flex-col gap-4">
 	<div class="flex items-center justify-between">
 		<h2 class="text-sm font-medium text-gray-900 dark:text-white">{$i18n.t('Live')}</h2>
+		{#if run}
+			<button
+				type="button"
+				disabled={killing}
+				on:click={() => (showKillConfirm = true)}
+				class="px-2.5 py-1 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 flex items-center gap-1.5"
+			>
+				{#if killing}
+					<Spinner className="size-3" />
+				{/if}
+				{$i18n.t('Kill')}
+			</button>
+		{/if}
 	</div>
 
 	{#if error}
@@ -88,6 +118,14 @@
 			class="text-xs text-red-700 dark:text-red-200 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
 		>
 			{typeof error === 'string' ? error : JSON.stringify(error)}
+		</div>
+	{/if}
+
+	{#if killError}
+		<div
+			class="text-xs text-red-700 dark:text-red-200 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+		>
+			{killError}
 		</div>
 	{/if}
 
@@ -231,3 +269,13 @@
 		</div>
 	{/if}
 </div>
+
+<ConfirmDialog
+	bind:show={showKillConfirm}
+	title={$i18n.t('Kill active run')}
+	message={$i18n.t(
+		'Are you sure you want to force-kill the currently running server? This sends an immediate kill signal rather than a graceful stop - any in-progress request is lost.'
+	)}
+	confirmLabel={$i18n.t('Kill')}
+	on:confirm={handleKillConfirmed}
+/>

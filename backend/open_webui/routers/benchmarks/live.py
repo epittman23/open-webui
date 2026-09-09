@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import os
+
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from open_webui.benchmarks import stats
+from open_webui.benchmarks.tune_probe import kill_pgid
+from open_webui.constants import ERROR_MESSAGES
 from open_webui.models.benchmark_configs import BenchmarkRuns
 from open_webui.models.benchmark_telemetry import BenchmarkGpuSamples, BenchmarkMetricsScrapes
 from open_webui.models.benchmark_tests import BenchmarkRequests
@@ -34,3 +38,29 @@ async def get_live(user=Depends(get_admin_user)):
         'recent_samples': samples[-12:],
         'warning': warning,
     }
+
+
+@router.post('/kill')
+async def kill_active_run(user=Depends(get_admin_user)):
+    """Force-stop whatever is currently being recorded, from Serve or a
+    Tune candidate alike.
+
+    Reads the process group off the *recorded* run row's pid, not any
+    in-memory handle (serve.py's `_job`, a Tune visit's Server instance),
+    so it still works exactly when it is most needed: after a backend
+    restart or crash orphans the llama-server/recorder pair with nothing
+    in this process tracking them, while the DB row -- and the pid on it
+    -- survives untouched. kill_pgid() escalates SIGINT -> SIGTERM ->
+    SIGKILL, the same sequence Server.stop() uses, so the recorder still
+    gets a chance to close its own run cleanly before this does it anyway.
+    """
+    run = await BenchmarkRuns.get_any_active_run()
+    if run is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERROR_MESSAGES.NOT_FOUND)
+    try:
+        pgid = os.getpgid(run.pid)
+    except ProcessLookupError:
+        pgid = None
+    await kill_pgid(pgid)
+    await BenchmarkRuns.close_run(run.run_id, reason='killed')
+    return {'killed': True, 'run_id': run.run_id}
