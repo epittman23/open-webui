@@ -1,0 +1,22 @@
+# An overnight run. Wide enough that a few items moving does not swing the
+# result, still a sample rather than the benchmark: a published pass@1 is over
+# the complete set, so these numbers compare configurations with each other and
+# nothing else.
+
+id   = "standard"
+description = "an overnight run; enough items to separate configurations"
+name = "standard"
+seed = 20260830
+note = "seeded sample; compare between configs, not against published scores"
+
+[[benchmark]]
+id = "humaneval"
+n  = 100
+
+[[benchmark]]
+id = "mbpp"
+n  = 100
+
+[[benchmark]]
+id = "ds1000"
+n  = 100

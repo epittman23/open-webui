@@ -1,0 +1,45 @@
+# MBPP (sanitized) - Austin et al. 2021, "Program Synthesis with Large Language Models"
+# https://arxiv.org/abs/2108.07732
+#
+# The sanitized split: 427 of the original ~974 problems, hand-verified by the
+# authors. Each item ships `test_list` (three asserts) and `test_imports`, which
+# are the grader. The asserts are also shown to the model, because the natural
+# language description alone does not fix the function name or signature -- this
+# is what the MBPP paper's own prompt does and what every published evaluation
+# of this benchmark does.
+
+id       = "mbpp"
+name     = "MBPP (sanitized)"
+license  = "CC-BY-4.0"
+homepage = "https://github.com/google-research/google-research/tree/master/mbpp"
+citation = "Austin et al. 2021, arXiv:2108.07732"
+
+# {tests} is joined from the item's own test_list. Presenting the asserts is not
+# leaking the answer: they are the specification, and withholding them would
+# make the function name unguessable and the pass rate meaningless.
+prompt_template = """You are an expert Python programmer. Write a Python function for the following task:
+
+{prompt}
+
+Your code must pass these tests:
+
+```python
+{tests}
+```
+"""
+
+[fetch]
+kind   = "github_raw"
+repo   = "google-research/google-research"
+ref    = "master"
+path   = "mbpp/sanitized-mbpp.json"
+format = "json"
+
+[item]
+id_field     = "task_id"
+prompt_field = "prompt"
+
+[check]
+harness  = "mbpp"        # test_imports + code + each assert in test_list
+timeout  = 20
+isolated = true

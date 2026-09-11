@@ -1,0 +1,51 @@
+# Search space for the qwen3c MoE profile (Qwen3-Coder-30B-A3B-Instruct
+# Q4_1, ~19.2 GiB on disk against 6 GiB of VRAM).
+#
+# Same shape as qwen36.toml: a MoE model this size on this card is bound by
+# how many experts' tensors stay resident in system RAM, so LLAMA_MOE is
+# again the knob the profile exists to make a trade on, and the other knobs
+# (threads/batch/ubatch/cache/ctx) are carried over from qwen36's grid by
+# structural analogy -- both are MoE profiles on the same 6 GiB card at the
+# same 65536 default context. There is no qwen3c-specific sweep yet to
+# narrow them from; this file's purpose is to produce the first one.
+#
+# main.sh's qwen3c profile comment records LLAMA_P_MOE=34 as "measured
+# optimum on 6 GB VRAM" -- the search is centered there rather than
+# re-exploring the full range blind.
+id = "qwen3c"
+profile = "qwen3c"
+
+# 32K is the floor, half of the profile's 65536 default -- mirrors qwen36's
+# reasoning that below it this stops being the long-context configuration
+# the profile was built for. No qwen3c-specific KV/VRAM measurement exists
+# yet to justify a different number.
+min_ctx = 32768
+
+[knob.LLAMA_MOE]
+values = [30, 32, 34, 36, 38]
+
+[knob.LLAMA_THREADS]
+values = [4, 6, 8, 10]
+
+[knob.LLAMA_BATCH]
+values = [256, 512, 1024, 2048]
+
+[knob.LLAMA_UBATCH]
+values = [128, 256, 512]
+
+[knob.LLAMA_CACHE_K]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+[knob.LLAMA_CACHE_V]
+values = ["q4_0", "q8_0", "f16"]
+ordered = false
+
+[knob.LLAMA_CTX]
+values = [32768, 65536]
+
+[[constraint]]
+expr = "LLAMA_UBATCH <= LLAMA_BATCH"
+
+[[constraint]]
+expr = "LLAMA_CTX >= min_ctx"

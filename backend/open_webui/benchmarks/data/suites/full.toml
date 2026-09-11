@@ -1,0 +1,24 @@
+# Every item of every benchmark. The only tier whose pass rate means the same
+# thing as a published one -- and the only tier where a difference from a
+# published figure is evidence about this setup rather than about sampling.
+#
+# Cost on this hardware: 164 + 427 + ~510 items at roughly 3 t/s with reasoning
+# tokens dominating. Budget days, not hours, and expect to resume it.
+
+id   = "full"
+description = "every item; the only tier comparable to a published score"
+name = "full"
+seed = 20260830
+note = "complete sets; the only tier comparable to published pass@1"
+
+[[benchmark]]
+id = "humaneval"
+n  = 0          # 0 = every item that survives the adapter's filter
+
+[[benchmark]]
+id = "mbpp"
+n  = 0
+
+[[benchmark]]
+id = "ds1000"
+n  = 0

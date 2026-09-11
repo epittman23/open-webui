@@ -127,6 +127,7 @@ ADMIN_CONFIG_KEYS = {
     'ENABLE_MEMORIES': 'memories.enable',
     'ENABLE_MEMORY_SYSTEM_CONTEXT': 'memories.system_context.enable',
     'ENABLE_NOTES': 'notes.enable',
+    'ENABLE_BENCHMARKS': 'benchmarks.enable',
     'ENABLE_USER_WEBHOOKS': 'ui.enable_user_webhooks',
     'ENABLE_USER_STATUS': 'users.enable_status',
     'PENDING_USER_OVERLAY_TITLE': 'ui.pending_user_overlay_title',
@@ -1230,6 +1231,7 @@ class AdminConfig(BaseModel):
     ENABLE_MEMORIES: bool
     ENABLE_MEMORY_SYSTEM_CONTEXT: bool
     ENABLE_NOTES: bool
+    ENABLE_BENCHMARKS: bool
     ENABLE_USER_WEBHOOKS: bool
     ENABLE_USER_STATUS: bool
     PENDING_USER_OVERLAY_TITLE: str | None = None
